@@ -1,0 +1,67 @@
+apply plugin: 'java'
+apply plugin:'application'
+
+sourceCompatibility = '1.7'
+targetCompatibility = '1.7'
+
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+mainClassName = 'Capsule'
+
+if (!project.hasProperty("sonatypeUsername") || !project.hasProperty("sonatypePassword")) {
+    ext.sonatypeUsername = ""
+    ext.sonatypePassword = ""
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+configurations {
+    capsule
+    capsuleUtil
+}
+
+dependencies {
+    capsule 'co.paralleluniverse:capsule:1.0-rc2-SNAPSHOT'
+    capsuleUtil 'co.paralleluniverse:capsule-util:1.0-rc2-SNAPSHOT'
+    compile 'org.jruby:jruby:9.0.0.0.pre2'
+    testCompile group: 'junit', name: 'junit', version: '4.10'
+}
+
+sourceSets {
+    main.compileClasspath = main.compileClasspath + configurations.capsule
+    test.compileClasspath = test.compileClasspath + configurations.capsule
+    test.runtimeClasspath = test.runtimeClasspath + configurations.capsule
+}
+
+jar {
+    from { configurations.capsule.collect { zipTree(it) } }
+    from { configurations.runtime } // embed dependencies
+    manifest {
+        attributes(
+	    'Main-Class'  : 'Capsule',
+            'Caplets'     : 'JRubyCapsule'
+        )
+    }
+}
+
+def reallyExecutable(jar) {
+    ant.concat(destfile: "tmp.jar", binary: true) {
+        zipentry(zipfile: configurations.capsuleUtil.first(), name: 'capsule/trampoline-execheader.sh')
+        fileset(dir: jar.destinationDir) {
+            include(name: jar.archiveName)
+        }
+    }
+    copy {
+        from 'tmp.jar'
+        into jar.destinationDir
+        rename { jar.archiveName }
+    }
+    delete 'tmp.jar'
+}
+
+tasks.withType(Jar) {
+    doLast { task -> reallyExecutable(task) }
+}
